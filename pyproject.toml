@@ -1,3 +1,9 @@
+[tool.poetry.scripts]
+ai_gym_rat = "ai_gym_rat.main:main"
+
+[tool.poetry.group.dev.dependencies]
+rich = "^14.0.0"
+
 [tool.poetry]
 name = "ai-gym-rat"
 version = "0.1.0"
@@ -15,6 +21,8 @@ langchain-core = "^0.3.60"
 httpx = "^0.28.1"
 pydantic = "^2.11.4"
 pydantic-settings = "^2.9.1"
+better-exceptions = "^0.3.3"
+orjson = "^3.10.18"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
