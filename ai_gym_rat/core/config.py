@@ -10,7 +10,7 @@ class AppSettings(BaseSettings):
     LLM_PROVIDER: str = "openai"
     LLM_MODEL_NAME: Optional[str] = None
 
-    WGER_API_URL: str = "https://wger.de/api/v2"
+    WGER_API_URL: str = "https://localhost/api/v2"
     WGER_API_KEY: str = "invalid-api-key"
     WGER_LANGUAGE_ID: int = 2 # English
 

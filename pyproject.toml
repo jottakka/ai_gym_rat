@@ -1,5 +1,5 @@
 [tool.poetry.scripts]
-ai_gym_rat = "ai_gym_rat.main:main"
+ai_gym_rat = "ai_gym_rat.main:app"
 
 [tool.poetry.group.dev.dependencies]
 rich = "^14.0.0"
@@ -23,6 +23,9 @@ pydantic = "^2.11.4"
 pydantic-settings = "^2.9.1"
 better-exceptions = "^0.3.3"
 orjson = "^3.10.18"
+fastapi = "^0.115.12"
+uvicorn = {extras = ["standard"], version = "^0.34.2"}
+debugpy = "^1.8.14"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

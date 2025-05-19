@@ -1,18 +1,26 @@
-import httpx
+import httpx # Still needed for WgerAPIClient, but not directly used in the tool
 from typing import List, Optional, Dict, Any, Type
-from pydantic import ValidationError, BaseModel, Field
+
+from pydantic import ValidationError, BaseModel, Field, PrivateAttr
+# model_validator is removed as we are using __init__
 
 from langchain_core.tools import BaseTool
 
-from ai_gym_rat.core.config import settings
+# Assuming WgerAPIClient is in a module, e.g., ai_gym_rat.clients.wger_client
+# Adjust the import path as necessary for your project structure.
+from ai_gym_rat.clients.wger_client import WgerAPIClient 
+
 from ai_gym_rat.tools.wger_models import WgerExerciseInfoResponse 
+# settings will be used by WgerAPIClient internally
+from ai_gym_rat.core.config import settings
+
 
 class WgerExerciseQueryInput(BaseModel):
     muscle_ids: Optional[List[int]] = Field(default=None, description="List of wger muscle numerical IDs. Example: [10, 8] for Quads and Hamstrings.")
     equipment_ids: Optional[List[int]] = Field(default=None, description="List of wger equipment numerical IDs. Example: [7] for Bodyweight, [3] for Dumbbell.")
     category_id: Optional[int] = Field(default=None, description="A single wger exercise category numerical ID. Example: 9 for Legs.")
-    language_id: int = Field(default=2, description="Language ID for the results (default is 2 for English).")
-    limit: int = Field(default=5, description="Maximum number of exercises to fetch (default is 5).")
+    language_id: int = Field(default=settings.WGER_LANGUAGE_ID, description="Language ID for the results.") # Use settings for default
+    limit: int = Field(default=10, description="Maximum number of exercises to fetch (default is 10).") 
     offset: int = Field(default=0, description="Offset for pagination (default is 0).")
 
 
@@ -25,81 +33,54 @@ class WgerExerciseQueryTool(BaseTool):
         "Returns a list of exercises with their names, IDs, descriptions, main muscles, and equipment."
     )
     args_schema: Type[BaseModel] = WgerExerciseQueryInput
-
-    def _build_params(
-        self,
-        language_id: int,
-        muscle_ids: Optional[List[int]],
-        equipment_ids: Optional[List[int]],
-        category_id: Optional[int],
-        limit: int,
-        offset: int
-    ) -> Dict[str, Any]:
+    
+    # Use PrivateAttr for internal state that is not part of the tool's "schema"
+    _api_client: WgerAPIClient = PrivateAttr()
+ 
+    def __init__(self, api_client: WgerAPIClient):
         """
-        Builds the dictionary of parameters for the API request.
-        List parameters (muscle_ids, equipment_ids) are kept as lists
-        for httpx to handle as repeated query parameters.
+        Initializes the WgerExerciseQueryTool.
+        The **data argument allows Pydantic/Langchain to pass field values.
         """
-        params: Dict[str, Any] = {
-            "language": language_id,
-            "limit": limit,
-            "offset": offset,
-            "status": 2 # Approved exercises
-        }
+        super().__init__() # Initialize the BaseTool part
+        self._api_client = api_client # Initialize the WgerAPIClient
 
-        if category_id is not None:
-            params["category"] = category_id
-        
-        if muscle_ids:
-            params["muscles"] = muscle_ids
-        
-        if equipment_ids:
-            params["equipment"] = equipment_ids
-        
-        return params
+    # The @model_validator and _initialize_api_client method have been removed.
 
     def _run(
         self,
-        muscle_ids: Optional[List[int]] = None,
-        equipment_ids: Optional[List[int]] = None,
-        category_id: Optional[int] = None,
-        language_id: int = 2, 
-        limit: int = 5, 
-        offset: int = 0
+        # Parameters are now handled by Pydantic model and passed to _arun
+        **kwargs: Any 
     ) -> str:
-       raise NotImplementedError("Subclasses must implement this method.")
+        # This tool is async, _run should ideally not be called directly by Langchain if async is supported.
+        raise NotImplementedError("WgerExerciseQueryTool is asynchronous; use _arun.")
 
     async def _arun(
         self,
         muscle_ids: Optional[List[int]] = None,
         equipment_ids: Optional[List[int]] = None,
         category_id: Optional[int] = None,
-        language_id: int = 2, 
-        limit: int = 5, 
+        language_id: Optional[int] = None, # This parameter from input schema, defaults in WgerExerciseQueryInput
+        limit: int = 10, 
         offset: int = 0
     ) -> str:
-        base_url = settings.WGER_API_URL.rstrip('/')
-        endpoint = f"{base_url}/exerciseinfo/"
         
-        params = self._build_params(
-            language_id=language_id,
-            muscle_ids=muscle_ids,
-            equipment_ids=equipment_ids,
-            category_id=category_id,
-            limit=limit,
-            offset=offset
-        )
-        headers = {} 
+        # Debugging information to understand what the tool is using
+        print(f"[WgerExerciseQueryTool ASYNC] Input language_id for this call: {language_id}") 
+        print(f"[WgerExerciseQueryTool ASYNC] Client's configured base URL: {self._api_client.base_url}")
+        print(f"[WgerExerciseQueryTool ASYNC] Client's configured language ID (from its init): {self._api_client.language_id}")
 
-        print(f"[WgerExerciseQueryTool ASYNC] Calling endpoint: {endpoint} with params: {params}")
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(endpoint, params=params, headers=headers)
-                response.raise_for_status()
-                response_json = response.json()
-
-            parsed_response = WgerExerciseInfoResponse.model_validate(response_json)
+            # Call the WgerAPIClient's method. It will use its own internal configuration
+            # for base_url, api_key, and language_id set during its initialization.
+            parsed_response = await self._api_client.get_exercises_info(
+                muscle_ids=muscle_ids,
+                equipment_ids=equipment_ids,
+                category_id=category_id,
+                limit=limit,
+                offset=offset
+            )
 
             if not parsed_response.results:
                 return "No exercises found matching your criteria."
@@ -126,16 +107,12 @@ class WgerExerciseQueryTool(BaseTool):
             
             return "\n\n---\n\n".join(formatted_exercises)
 
+        # Error handling is simplified as WgerAPIClient should handle its own detailed logging/printing of errors.
         except httpx.HTTPStatusError as e:
-            error_message = f"API Error ASYNC: HTTP {e.response.status_code} - {e.response.text[:500]}"
-            print(f"[WgerExerciseQueryTool ASYNC] {error_message}")
-            return f"Error: Failed to fetch data from wger API. Status: {e.response.status_code}. Detail: {e.response.text[:100]}"
-        except ValidationError as e:
-            error_details = f"Pydantic validation error ASYNC for wger response: {e.errors(include_input=False)}"
-            print(f"[WgerExerciseQueryTool ASYNC] Validation Error: {error_details}")
-            # print(f"[WgerExerciseQueryTool ASYNC] Raw JSON causing validation error: {response_json}")
-            return "Error: API response structure from wger is not as expected and could not be processed."
+            return f"Error: Failed to fetch data from wger API. Status: {e.response.status_code}."
+        except ValidationError:
+            return "Error: API response structure from wger is not as expected."
         except Exception as e:
-            print(f"[WgerExerciseQueryTool ASYNC] Unexpected error: {type(e).__name__} - {e}")
-            return f"Error: An unexpected error occurred while fetching or processing exercise data: {str(e)}"
+            print(f"[WgerExerciseQueryTool ASYNC] Forwarding unexpected error from client: {type(e).__name__} - {e}")
+            return f"Error: An unexpected error occurred: {str(e)}"
 

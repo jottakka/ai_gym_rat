@@ -1,14 +1,9 @@
 
-from typing import List, Optional, Union, Tuple
+from typing import List, Union, Tuple
 
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
-
-from langchain_core.messages import ToolMessage 
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.agents import AgentFinish, AgentAction
-
 
 from ai_gym_rat.clients.wger_client import WgerAPIClient
 from ai_gym_rat.core.llm_setup import get_llm

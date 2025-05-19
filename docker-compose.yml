@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:13
+    restart: unless-stopped
+    volumes:
+      - wger_db_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=wger
+      - POSTGRES_USER=wger
+      - POSTGRES_PASSWORD=wgerpassword
+    networks:
+      - my_app_network
+
+  cache:
+    image: redis:6-alpine
+    restart: unless-stopped
+    networks:
+      - my_app_network
+
+  web:
+    image: wger/server:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+      - cache
+    networks:
+      - my_app_network
+
+  nginx:
+    image: nginx:stable-alpine
+    ports:
+      - "80:80" # Host port 80 mapped to container port 80 (Wger default)
+    depends_on:
+      - web # Nginx usually depends on the wger web app
+    networks:
+      - my_app_network
+
+  ai_gym_rat_app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - ./.env 
+    depends_on:
+      - nginx 
+    networks:
+      - my_app_network
+
+volumes:
+  wger_db_data: 
+
+networks:
+  my_app_network:
+    driver: bridge

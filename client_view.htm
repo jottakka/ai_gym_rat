@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Workout Architect Client</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html, body {
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+        }
+        .chat-messages::-webkit-scrollbar, .log-viewer::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-messages::-webkit-scrollbar-track, .log-viewer::-webkit-scrollbar-track {
+            background: #4a5568; /* Tailwind gray-700 */
+            border-radius: 10px;
+        }
+        .chat-messages::-webkit-scrollbar-thumb, .log-viewer::-webkit-scrollbar-thumb {
+            background: #718096; /* Tailwind gray-500 */
+            border-radius: 10px;
+        }
+        .chat-messages::-webkit-scrollbar-thumb:hover, .log-viewer::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0; /* Tailwind gray-400 */
+        }
+        .loader {
+            border: 4px solid #4a5568; 
+            border-top: 4px solid #63b3ed; /* Tailwind blue-400 */
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .ai-message-content ul, .ai-message-content ol {
+            list-style-position: inside;
+            margin-left: 1.25rem; 
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .ai-message-content ul { list-style-type: disc; }
+        .ai-message-content ol { list-style-type: decimal; }
+        .ai-message-content li { margin-bottom: 0.25rem; }
+        .ai-message-content strong { font-weight: 600; }
+
+        /* Log viewer specific styles */
+        .log-entry {
+            padding: 0.25rem 0.5rem;
+            border-bottom: 1px solid #4a5568; /* gray-700 */
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+            font-size: 0.8rem; /* Slightly smaller for logs */
+            white-space: pre-wrap; /* Preserve whitespace and wrap */
+            word-break: break-all; /* Break long words */
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 flex flex-col items-center justify-center min-h-screen p-4 overflow-hidden">
+
+    <div class="flex w-full max-w-5xl bg-slate-800 shadow-2xl rounded-xl" style="height: 90vh; max-height: 800px;">
+        
+        <div class="w-3/5 flex flex-col border-r border-slate-700">
+            <header class="bg-slate-700 p-4 sm:p-5 rounded-tl-xl">
+                <h1 class="text-xl sm:text-2xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-300">
+                    AI Workout Architect
+                </h1>
+            </header>
+
+            <div id="chatMessages" class="flex-grow p-4 space-y-4 overflow-y-auto chat-messages bg-slate-800/50">
+                <div class="flex">
+                    <div class="bg-sky-500 text-white p-3 rounded-lg max-w-xs sm:max-w-md shadow ai-message-content">
+                        <p class="text-sm">Hello! How can I help you plan your workout today?</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="statusArea" class="p-3 text-center border-t border-slate-700">
+                <div id="loadingIndicator" class="hidden loader mx-auto"></div>
+                <p id="errorMessage" class="text-red-400 text-xs"></p>
+            </div>
+
+            <form id="workoutForm" class="p-4 border-t border-slate-700 bg-slate-800 rounded-bl-xl">
+                <div class="flex items-center space-x-3">
+                    <input type="text" id="userQuery" placeholder="Ask about your workout..." class="flex-grow p-3 bg-slate-700 border border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none text-slate-100 placeholder-slate-400 text-sm" required>
+                    <button type="submit" class="bg-gradient-to-r from-sky-500 to-cyan-400 hover:from-sky-600 hover:to-cyan-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out text-sm">
+                        Send
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="w-2/5 flex flex-col bg-slate-850"> <header class="bg-slate-700 p-4 sm:p-5 rounded-tr-xl border-b border-slate-600">
+                <h2 class="text-lg sm:text-xl font-semibold text-center text-slate-300">Server Logs</h2>
+            </header>
+            <div id="logViewer" class="flex-grow p-3 overflow-y-auto log-viewer text-slate-300">
+                <div class="log-entry text-slate-500 italic">Logs from the server will appear here...</div>
+            </div>
+            <footer class="p-2 border-t border-slate-700 text-center rounded-br-xl">
+                <button id="clearLogsButton" class="text-xs bg-slate-600 hover:bg-slate-500 text-slate-200 py-1 px-3 rounded">Clear Logs</button>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        const workoutForm = document.getElementById('workoutForm');
+        const userQueryInput = document.getElementById('userQuery');
+        const chatMessagesDiv = document.getElementById('chatMessages');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const errorMessageDiv = document.getElementById('errorMessage');
+        const logViewerDiv = document.getElementById('logViewer'); // New element
+        const clearLogsButton = document.getElementById('clearLogsButton'); // New element
+
+        let currentChatHistory = []; 
+
+        function renderMarkdown(text) {
+            let html = text;
+            html = html.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>');
+            html = html.replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>');
+            const paragraphs = html.split(/\n\s*\n/);
+            html = paragraphs.map(para => {
+                if (/^(\s*(\*|-)\s+.*)(\n\s*(\*|-)\s+.*)*/s.test(para)) {
+                    const items = para.split('\n').map(item => item.trim().replace(/^(\*|-)\s*/, ''));
+                    return '<ul>' + items.map(item => `<li>${item.replace(/\n/g, '<br>')}</li>`).join('') + '</ul>';
+                }
+                if (/^(\s*\d+\.\s+.*)(\n\s*\d+\.\s+.*)*/s.test(para)) {
+                    const items = para.split('\n').map(item => item.trim().replace(/^\d+\.\s*/, ''));
+                    return '<ol>' + items.map(item => `<li>${item.replace(/\n/g, '<br>')}</li>`).join('') + '</ol>';
+                }
+                return '<p>' + para.replace(/\n/g, '<br>') + '</p>';
+            }).join('');
+            return html;
+        }
+
+        function addMessageToChat(role, content) {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.classList.add('flex');
+            const messageBubble = document.createElement('div');
+            messageBubble.classList.add('p-3', 'rounded-lg', 'max-w-xs', 'sm:max-w-md', 'shadow', 'text-sm');
+            if (role === 'human') {
+                messageWrapper.classList.add('justify-end');
+                messageBubble.classList.add('bg-slate-600', 'text-slate-50');
+                messageBubble.textContent = content;
+            } else {
+                messageBubble.classList.add('bg-sky-500', 'text-white', 'ai-message-content');
+                messageBubble.innerHTML = renderMarkdown(content);
+            }
+            messageWrapper.appendChild(messageBubble);
+            chatMessagesDiv.appendChild(messageWrapper);
+            chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+        }
+
+        // --- NEW: Function to add logs to the log viewer ---
+        function displayServerLogs(logs) {
+            if (logViewerDiv.innerHTML.includes('Logs from the server will appear here...')) {
+                logViewerDiv.innerHTML = ''; // Clear initial placeholder
+            }
+            if (logs && logs.length > 0) {
+                logs.forEach(logLine => {
+                    const logEntry = document.createElement('div');
+                    logEntry.classList.add('log-entry');
+                    logEntry.textContent = logLine;
+                    logViewerDiv.appendChild(logEntry);
+                });
+                logViewerDiv.scrollTop = logViewerDiv.scrollHeight; // Auto-scroll
+            } else {
+                 const noLogsEntry = document.createElement('div');
+                 noLogsEntry.classList.add('log-entry', 'text-slate-500', 'italic');
+                 noLogsEntry.textContent = 'No new logs from server for this request.';
+                 logViewerDiv.appendChild(noLogsEntry);
+                 logViewerDiv.scrollTop = logViewerDiv.scrollHeight;
+            }
+        }
+        
+        clearLogsButton.addEventListener('click', () => {
+            logViewerDiv.innerHTML = '<div class="log-entry text-slate-500 italic">Logs cleared. New logs will appear here...</div>';
+        });
+
+        workoutForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const userQuery = userQueryInput.value.trim();
+            if (!userQuery) return;
+
+            addMessageToChat('human', userQuery);
+            userQueryInput.value = ''; 
+            loadingIndicator.classList.remove('hidden');
+            errorMessageDiv.textContent = '';
+
+            // Add a separator in logs for new request
+            const separator = document.createElement('div');
+            separator.classList.add('log-entry', 'text-sky-400', 'font-semibold');
+            separator.textContent = `--- Request: ${new Date().toLocaleTimeString()} ---`;
+            if (!logViewerDiv.innerHTML.includes('Logs from the server will appear here...')) {
+                 logViewerDiv.appendChild(separator);
+            }
+
+
+            try {
+                const payload = { user_query: userQuery, chat_history: currentChatHistory };
+                const response = await fetch('http://localhost:8000/plan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                loadingIndicator.classList.add('hidden');
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: 'Unknown error occurred.' }));
+                    // Try to display logs even if the main request failed, if they are part of errorData
+                    if (errorData.server_logs) {
+                        displayServerLogs(errorData.server_logs);
+                    }
+                    throw new Error(`API Error (${response.status}): ${errorData.detail || response.statusText}`);
+                }
+
+                const data = await response.json();
+                currentChatHistory = data.updated_chat_history; 
+                
+                chatMessagesDiv.innerHTML = ''; 
+                currentChatHistory.forEach(msg => addMessageToChat(msg.role, msg.content));
+                
+                // Display server logs
+                displayServerLogs(data.server_logs);
+
+            } catch (error) {
+                console.error('Error sending message:', error);
+                loadingIndicator.classList.add('hidden');
+                errorMessageDiv.textContent = error.message || 'Failed to connect to the API. Ensure it is running.';
+                // Display a generic error in log viewer if fetch itself failed hard
+                if (!logViewerDiv.querySelector('.log-entry:not(.italic)')) { // if no logs yet
+                    displayServerLogs([`CLIENT ERROR: ${error.message}`]);
+                }
+            }
+        });
+    </script>
+
+</body>
+</html>
